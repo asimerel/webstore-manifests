@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payment
+  labels:
+    opentelemetry.io/name: payment
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: payment
+    app.kubernetes.io/name: payment
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: payment
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: payment
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: payment
+        app.kubernetes.io/name: payment
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      containers:
+      - name: payment
+        image: public.ecr.aws/v4z2v9g0/webshop/payment:2026.09.07.2
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: service
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: PAYMENT_PORT
+          value: '8080'
+        - name: FLAGD_HOST
+          value: flagd
+        - name: FLAGD_PORT
+          value: '8013'
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4317
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: grpc
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: IPV6_ENABLED
+          value: 'false'
+        - name: NODE_OPTIONS
+          value: "--require @opentelemetry/auto-instrumentations-node/register"
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=critical
+        resources:
+          limits:
+            memory: 140Mi
+        securityContext:
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000

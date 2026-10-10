@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: checkout
+  labels:
+    opentelemetry.io/name: checkout
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: checkout
+    app.kubernetes.io/name: checkout
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: checkout
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: checkout
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: checkout
+        app.kubernetes.io/name: checkout
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      containers:
+      - name: checkout
+        image: public.ecr.aws/v4z2v9g0/webshop/checkout:2026.09.07.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: service
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: CHECKOUT_PORT
+          value: '8080'
+        # cart and currency are required peers. email, payment,
+        # product-catalog and shipping are optional at startup:
+        # checkout calls them lazily per-request (no startup dial),
+        # so their absence surfaces as request-time errors, not a crash.
+        - name: CART_ADDR
+          value: cart:8080
+        - name: CURRENCY_ADDR
+          value: currency:8080
+        - name: EMAIL_ADDR
+          value: http://email:8080
+        - name: PAYMENT_ADDR
+          value: payment:8080
+        - name: PRODUCT_CATALOG_ADDR
+          value: product-catalog:8080
+        - name: SHIPPING_ADDR
+          value: http://shipping:8080
+        # kafka is a hard startup dependency (see initContainer below): the
+        # upstream chart itself gates checkout's startup on kafka via a
+        # blocking "wait-for-kafka" initContainer, so we ship a minimal
+        # single-node KRaft kafka helper (kafka.yaml) alongside checkout
+        # rather than disabling it — there's no env flag to skip Kafka
+        # publishing in this service.
+        - name: KAFKA_ADDR
+          value: kafka:9092
+        - name: KAFKA_TOPIC
+          value: orders
+        - name: FLAGD_HOST
+          value: flagd
+        - name: FLAGD_PORT
+          value: '8013'
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4317
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: grpc
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: GOMEMLIMIT
+          value: 16MiB
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=critical
+        resources:
+          limits:
+            memory: 20Mi
+        securityContext:
+          readOnlyRootFilesystem: true
+        volumeMounts:
+        - name: tmp
+          mountPath: "/tmp"
+      initContainers:
+      - name: wait-for-kafka
+        image: busybox:latest
+        command:
+        - sh
+        - "-c"
+        - until nc -z -v -w30 kafka 9092; do echo waiting for kafka; sleep 2; done;
+      volumes:
+      - name: tmp
+        emptyDir: {}

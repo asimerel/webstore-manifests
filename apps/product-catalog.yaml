@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: product-catalog
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:asimerel/webstore-manifests.git
+    targetRevision: main
+    path: components/product-catalog
+  destination:
+    name: in-cluster
+    namespace: shop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

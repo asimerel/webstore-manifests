@@ -1,0 +1,97 @@
+# Minimal helper: single-node Kafka (KRaft mode, no ZooKeeper) so that
+# checkout's blocking "wait-for-kafka" initContainer (see deployment.yaml)
+# succeeds and checkout can publish to the "orders" topic. This is the
+# same single-node KRaft broker image the shop services were developed
+# against (mirrored into our registry), scoped
+# to only what checkout needs. Not exposed as its own component —
+# it lives inside checkout's directory because nothing else in the cluster
+# depends on it.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka
+  labels:
+    opentelemetry.io/name: kafka
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: kafka
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: kafka
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: kafka
+        app.kubernetes.io/name: kafka
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      containers:
+      - name: kafka
+        image: public.ecr.aws/v4z2v9g0/webshop/kafka:2026.09.07
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 9092
+          name: plaintext
+        - containerPort: 9093
+          name: controller
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: KAFKA_ADVERTISED_LISTENERS
+          value: PLAINTEXT://kafka:9092
+        - name: KAFKA_HEAP_OPTS
+          value: "-Xmx400M -Xms400M"
+        - name: KAFKA_LISTENERS
+          value: PLAINTEXT://:9092,CONTROLLER://:9093
+        - name: KAFKA_CONTROLLER_LISTENER_NAMES
+          value: CONTROLLER
+        - name: KAFKA_CONTROLLER_QUORUM_VOTERS
+          value: 1@kafka:9093
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4317
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: grpc
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=low
+        resources:
+          limits:
+            memory: 700Mi
+        securityContext:
+          runAsGroup: 1000
+          runAsNonRoot: true
+          runAsUser: 1000
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka
+  labels:
+    opentelemetry.io/name: kafka
+    app.kubernetes.io/component: kafka
+    app.kubernetes.io/name: kafka
+    app.kubernetes.io/part-of: webshop
+spec:
+  type: ClusterIP
+  ports:
+  - port: 9092
+    name: plaintext
+    targetPort: 9092
+  - port: 9093
+    name: controller
+    targetPort: 9093
+  selector:
+    opentelemetry.io/name: kafka

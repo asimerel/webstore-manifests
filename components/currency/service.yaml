@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: currency
+  labels:
+    opentelemetry.io/name: currency
+    app.kubernetes.io/component: currency
+    app.kubernetes.io/name: currency
+    app.kubernetes.io/part-of: webshop
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    name: tcp-service
+    targetPort: 8080
+  selector:
+    opentelemetry.io/name: currency

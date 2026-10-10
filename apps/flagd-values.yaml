@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: flagd-values
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:asimerel/platform-config.git # flag values are synced from the platform config repo
+    targetRevision: main
+    path: flagd-values
+  destination:
+    name: in-cluster
+    namespace: shop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

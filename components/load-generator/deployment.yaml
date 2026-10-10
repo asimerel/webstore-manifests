@@ -1,0 +1,84 @@
+# NOTE: the upstream OpenTelemetry shop replaced its Locust-based load generator
+# with a k6-based one as of chart/image 3.0.0 — there is no Locust image to
+# pull anymore. This adapts the current k6 load-generator to the same
+# intent as the original ask (LOCUST_USERS=5, headless, autostart):
+# LOAD_GENERATOR_VUS=5 achieves the equivalent constant-VU HTTP load, and
+# k6 always runs headless/autostart via its entrypoint (no separate web UI
+# step to disable, unlike Locust). See README.md for the full mapping.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: load-generator
+  labels:
+    opentelemetry.io/name: load-generator
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: load-generator
+    app.kubernetes.io/name: load-generator
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: load-generator
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: load-generator
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: load-generator
+        app.kubernetes.io/name: load-generator
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      containers:
+      - name: load-generator
+        image: public.ecr.aws/v4z2v9g0/webshop/load-generator:2026.09.07.1
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: LOAD_GENERATOR_VUS
+          value: '5'
+        # Points at the frontend component directly: frontend-proxy
+        # (the upstream envoy ingress) is not deployed in this cluster.
+        - name: K6_TARGET_URL
+          value: http://frontend:8080
+        # Browser-based load (headless chromium) disabled: it only adds
+        # browser RUM traces via frontend-proxy's OTLP proxy route, which
+        # we don't deploy, and chromium sandboxing is fragile on these
+        # nodes. HTTP load is unaffected.
+        - name: K6_BROWSER_ENABLED
+          value: 'false'
+        # A flagd outage does not stop load: the load generator's
+        # entrypoint polls flagd's OFREP endpoint once at startup and every
+        # 10s after to resize VUs (see the upstream load-generator entrypoint.sh)
+        # and explicitly falls back to LOAD_GENERATOR_VUS/last-known-good on
+        # any fetch failure -- non-fatal by design, confirmed in source.
+        - name: FLAGD_HOST
+          value: flagd
+        - name: FLAGD_OFREP_PORT
+          value: '8016'
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4318
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: http/protobuf
+        # k6's OTLP metrics exporter ignores OTEL_EXPORTER_OTLP_ENDPOINT and dials
+        # localhost:4317 -> permanent "failed to upload metrics" stream (run-3
+        # finding, 2026-09-03). It needs its own env.
+        - name: K6_OTEL_GRPC_EXPORTER_ENDPOINT
+          value: $(OTEL_COLLECTOR_NAME):4317
+        - name: K6_OTEL_GRPC_EXPORTER_INSECURE
+          value: 'true'
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=low
+        resources:
+          limits:
+            memory: 512Mi

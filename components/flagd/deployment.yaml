@@ -1,0 +1,59 @@
+# flagd — OpenFeature flag daemon for the shop services and the load
+# generator. The k6 script gates ALL traffic on browseJourneyEnabled
+# (> 0), so without flagd the load generator is a no-op. Image/ports match
+# upstream release 3.0.0 (.env: FLAGD_IMAGE, FLAGD_PORT 8013 grpc,
+# FLAGD_OFREP_PORT 8016 http/OFREP).
+# Flag values come from the flagd-config ConfigMap (configmap.yaml): change a
+# flag by setting its active variant there — one flag change per commit.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: flagd
+  labels:
+    opentelemetry.io/name: flagd
+    app.kubernetes.io/component: flagd
+    app.kubernetes.io/name: flagd
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      opentelemetry.io/name: flagd
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: flagd
+        app.kubernetes.io/component: flagd
+        app.kubernetes.io/name: flagd
+    spec:
+      containers:
+        - name: flagd
+          image: public.ecr.aws/v4z2v9g0/webshop/flagd:v0.16.0
+          args:
+            - start
+            - --uri
+            - file:/etc/flagd/flags.json
+            # Pin the flag-evaluation gRPC port. Without --port, flagd v0.16.0
+            # binds it to an ephemeral port (observed 44543), leaving the
+            # Service's 8013 with no listener, so the Rust shipping service's
+            # gRPC flagd provider panics at startup. OFREP (8016) is unaffected,
+            # which is why this stayed latent until shipping was added.
+            - --port
+            - "8013"
+            - --ofrep-port
+            - "8016"
+          ports:
+            - containerPort: 8013
+              name: grpc
+            - containerPort: 8016
+              name: ofrep
+          volumeMounts:
+            - name: flagd-config
+              mountPath: /etc/flagd
+              readOnly: true
+          resources:
+            requests: {cpu: 25m, memory: 32Mi}
+            limits: {memory: 128Mi}
+      volumes:
+        - name: flagd-config
+          configMap:
+            name: flagd-config

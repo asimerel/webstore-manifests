@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  labels:
+    opentelemetry.io/name: frontend
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: frontend
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: frontend
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: frontend
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: frontend
+        app.kubernetes.io/name: frontend
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      containers:
+      - name: frontend
+        image: public.ecr.aws/v4z2v9g0/webshop/frontend:2026.09.07.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: service
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: FRONTEND_PORT
+          value: '8080'
+        - name: PORT
+          value: "$(FRONTEND_PORT)"
+        - name: FRONTEND_ADDR
+          value: frontend:8080
+        # The following peer services (ad, checkout, product-catalog,
+        # recommendation, shipping) are separate components and may be down.
+        # These env vars are kept so the corresponding UI paths degrade
+        # gracefully (request-time errors) instead of removing functionality
+        # the frontend image still expects to be configurable.
+        - name: AD_ADDR
+          value: ad:8080
+        - name: CART_ADDR
+          value: cart:8080
+        - name: CHECKOUT_ADDR
+          value: checkout:8080
+        - name: CURRENCY_ADDR
+          value: currency:8080
+        - name: PRODUCT_CATALOG_ADDR
+          value: product-catalog:8080
+        - name: RECOMMENDATION_ADDR
+          value: recommendation:8080
+        - name: SHIPPING_ADDR
+          value: http://shipping:8080
+        - name: FLAGD_HOST
+          value: flagd
+        - name: FLAGD_PORT
+          value: '8013'
+        - name: ENV_PLATFORM
+          value: kubernetes
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_COLLECTOR_HOST
+          value: "$(OTEL_COLLECTOR_NAME)"
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4317
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: grpc
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: WEB_OTEL_SERVICE_NAME
+          value: frontend-web
+        # Browser-side (RUM) traces are proxied through frontend-proxy's
+        # envoy config upstream, which we do not deploy in this
+        # cluster. Browser tracing to this path will simply fail closed;
+        # server-side traces via OTEL_EXPORTER_OTLP_ENDPOINT are unaffected.
+        - name: PUBLIC_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT
+          value: http://localhost:8080/otlp-http/v1/traces
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=critical
+        resources:
+          limits:
+            memory: 250Mi
+        securityContext:
+          runAsGroup: 1001
+          runAsNonRoot: true
+          runAsUser: 1001

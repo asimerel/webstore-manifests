@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-catalog
+  labels:
+    opentelemetry.io/name: product-catalog
+    app.kubernetes.io/version: 3.0.0
+    app.kubernetes.io/component: product-catalog
+    app.kubernetes.io/name: product-catalog
+    app.kubernetes.io/part-of: webshop
+spec:
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      opentelemetry.io/name: product-catalog
+  template:
+    metadata:
+      labels:
+        opentelemetry.io/name: product-catalog
+        app.kubernetes.io/version: 3.0.0
+        app.kubernetes.io/component: product-catalog
+        app.kubernetes.io/name: product-catalog
+      annotations:
+        resource.opentelemetry.io/service.namespace: webshop
+    spec:
+      initContainers:
+      - name: wait-for-postgres
+        image: busybox:latest
+        command:
+        - sh
+        - "-c"
+        - until nc -z -v -w30 postgres.datastore.svc.cluster.local 5432; do echo waiting for postgres.datastore; sleep 2; done;
+      containers:
+      - name: product-catalog
+        image: public.ecr.aws/v4z2v9g0/webshop/product-catalog:2026.09.07.1
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: service
+        env:
+        - name: OTEL_SERVICE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.labels['app.kubernetes.io/component']
+        - name: PRODUCT_CATALOG_PORT
+          value: '8080'
+        - name: GOMEMLIMIT
+          value: 16MiB
+        - name: OTEL_SEMCONV_STABILITY_OPT_IN
+          value: database
+        - name: DB_CONNECTION_STRING
+          value: postgres://shop_user:shop_password@postgres.datastore.svc.cluster.local:5432/shop_db?sslmode=disable
+        - name: FLAGD_HOST
+          value: flagd
+        - name: FLAGD_PORT
+          value: '8013'
+        - name: OTEL_COLLECTOR_NAME
+          value: otel-collector.telemetry.svc.cluster.local
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://$(OTEL_COLLECTOR_NAME):4317
+        - name: OTEL_EXPORTER_OTLP_PROTOCOL
+          value: grpc
+        - name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE
+          value: cumulative
+        - name: OTEL_RESOURCE_ATTRIBUTES
+          value: service.version=3.0.0,service.criticality=high
+        resources:
+          limits:
+            memory: 60Mi

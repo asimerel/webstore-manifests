@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  # This name becomes the Argo tracking label app.kubernetes.io/instance
+  # on managed workloads.
+  name: batch-jobs
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: git@github.com:asimerel/platform-config.git
+    targetRevision: main
+    path: batch-active
+  destination:
+    name: in-cluster
+    namespace: batch
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+      allowEmpty: true # batch-active/ may legitimately be empty; without this, auto-sync refuses to sync an empty directory.
+    syncOptions:
+      - CreateNamespace=true

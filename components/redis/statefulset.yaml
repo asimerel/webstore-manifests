@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  labels:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/name: redis
+spec:
+  serviceName: redis
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: redis
+    spec:
+      containers:
+      - name: redis
+        image: redis:7
+        imagePullPolicy: IfNotPresent
+        command:
+        - redis-server
+        - --appendonly
+        - "yes"
+        # Bounded memory + noeviction: writes fail loudly ("OOM command not
+        # allowed") instead of evicting silently — required by the
+        # cart service: a failed write is visible, a silently evicted cart is not.
+        - --maxmemory
+        - 256mb
+        - --maxmemory-policy
+        - noeviction
+        ports:
+        - containerPort: 6379
+          name: redis
+        volumeMounts:
+        - name: data
+          mountPath: /data
+        resources:
+          requests:
+            cpu: 100m
+            memory: 256Mi
+  volumeClaimTemplates:
+  - metadata:
+      name: data
+    spec:
+      accessModes:
+      - ReadWriteOnce
+      resources:
+        requests:
+          storage: 100Gi

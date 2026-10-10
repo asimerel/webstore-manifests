@@ -1,0 +1,3 @@
+# webstore-manifests
+
+Kubernetes manifests.
