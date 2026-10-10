@@ -3,8 +3,17 @@
 # (> 0), so without flagd the load generator is a no-op. Image/ports match
 # upstream release 3.0.0 (.env: FLAGD_IMAGE, FLAGD_PORT 8013 grpc,
 # FLAGD_OFREP_PORT 8016 http/OFREP).
-# Flag values come from the flagd-config ConfigMap (configmap.yaml): change a
-# flag by setting its active variant there — one flag change per commit.
+# Flag VALUES are NOT in this repo. The flagd-config ConfigMap mounted below is
+# owned by the "flagd-values" Argo Application (apps/flagd-values.yaml), which
+# syncs it from asimerel/platform-config (path: flagd-values). To change a
+# flag's active variant, open a PR there — one flag change per commit. Do not
+# add a competing ConfigMap here: two Applications would fight over the same
+# shop/flagd-config object.
+# flagd hot-reloads flags.json on ConfigMap change (fsnotify), so a flag flip
+# takes effect cluster-wide within ~1 minute of the Argo sync, with no pod
+# restart and no deployment-level change to correlate against. When a shop
+# service misbehaves with no manifest change, check flagd's logs for a
+# "filepath event: /etc/flagd/flags.json" line near the onset.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
