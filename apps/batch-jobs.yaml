@@ -9,7 +9,13 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-11 11:10Z: pinned to the last known-good platform-config
+    # revision. 3e41f82c (synced 11:10:54Z) added a cluster-scoped
+    # ValidatingWebhookConfiguration "pod-policy" pointing at a non-existent
+    # Service pod-policy-webhook.platform-ops.svc, which blocks every pod CREATE
+    # it matches (shop/recommendation is down). With prune: true, syncing this
+    # revision removes the webhook. Restore to `main` once platform-config is fixed.
+    targetRevision: 79825884ae3472e75a077cea8d0d1ba9ad107e1b
     path: batch-active
   destination:
     name: in-cluster
