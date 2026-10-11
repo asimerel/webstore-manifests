@@ -15,9 +15,24 @@ spec:
     name: in-cluster
     namespace: batch
   syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-      allowEmpty: true # batch-active/ may legitimately be empty; without this, auto-sync refuses to sync an empty directory.
+    # INCIDENT 2026-10-11 (product pages down from 07:04Z): auto-sync is PAUSED.
+    #
+    # An automated sync of this Application at 07:04:33Z applied
+    # Job batch/credential-rotator from platform-config/batch-active. The job
+    # rotated the Postgres password for role `shop_user` and terminated its
+    # sessions; shop/product-catalog still carries the previous static password
+    # (components/product-catalog/deployment.yaml), so every catalog query has
+    # failed with 28P01 since. The job also ran with no reviewable change in this
+    # repo, and responders have no read access to platform-config.
+    #
+    # Auto-sync stays off until (a) shop_user's credential is reconciled with
+    # product-catalog and (b) batch-active has been reviewed. While paused, Argo
+    # still reports drift (OutOfSync) but applies nothing; manual sync remains
+    # possible. Re-enable by restoring the block below:
+    #
+    #   automated:
+    #     prune: true
+    #     selfHeal: true
+    #     allowEmpty: true # batch-active/ may legitimately be empty; without this, auto-sync refuses to sync an empty directory.
     syncOptions:
       - CreateNamespace=true
