@@ -60,5 +60,7 @@ spec:
         - name: OTEL_RESOURCE_ATTRIBUTES
           value: service.version=3.0.0,service.criticality=medium
         resources:
+          requests:
+            cpu: 250m
           limits:
             memory: 200Mi
