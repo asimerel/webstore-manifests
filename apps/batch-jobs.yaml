@@ -9,7 +9,17 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-11 09:00Z: pinned to the last known-good platform-config
+    # revision (in effect 08:36-09:00Z, zero frontend errors / zero k6 timeouts).
+    # The next revision (412887ba) added Job batch/catalog-maintenance, which
+    # takes an exclusive lock on catalog.products and holds it for
+    # HOLD_SECONDS=86400 (24 h). Every product-catalog query blocks on that lock;
+    # blocked sessions exhausted Postgres connection slots at 09:24Z.
+    # With prune=true, syncing this revision removes the Job and releases the lock.
+    # Restore `targetRevision: main` only after catalog-maintenance has been
+    # removed or fixed in platform-config (activeDeadlineSeconds, lock_timeout,
+    # no 24 h hold).
+    targetRevision: 44166ee4d3fc79fd733ac926b3e5ed0e0a999348
     path: batch-active
   destination:
     name: in-cluster
