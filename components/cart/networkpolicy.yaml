@@ -1,0 +1,36 @@
+# Declares cart's ingress contract so it is owned alongside the workload.
+#
+# Context (incident 2026-10-11 ~05:18 UTC): a NetworkPolicy named
+# shop/restrict-cart-ingress (policyTypes: [Ingress], no ingress rules ==
+# deny-all) was applied to the shop namespace by the unrelated `batch-jobs`
+# Argo Application, whose source lives in platform-config, not this repo.
+# It cut off every caller of cart (frontend, checkout) and took down
+# add-to-cart and checkout for all customers.
+#
+# NetworkPolicies are additive: a pod is reachable if ANY policy selecting it
+# allows the traffic. This policy restores reachability from the shop
+# namespace on the service port only, which is narrower than the pre-incident
+# state (no policy == allow-all) and does not depend on the other repo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cart-ingress-from-shop
+  namespace: shop
+  labels:
+    app.kubernetes.io/component: cart
+    app.kubernetes.io/name: cart
+    app.kubernetes.io/part-of: webshop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cart
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+      ports:
+        - protocol: TCP
+          port: 8080
