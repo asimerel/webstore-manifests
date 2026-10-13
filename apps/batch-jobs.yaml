@@ -9,7 +9,27 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-13 18:23Z (Custom Postgres Backend Memory Climb): pinned
+    # to the last known-good platform-config revision.
+    # 0c5e6b07 (auto-synced 18:12:45Z; Argo task list was exactly
+    # "Job:batch/catalog-maintenance nil->obj", nothing else) created
+    # Job batch/catalog-maintenance (image webshop/catalog-maintenance:2026.09.15.1,
+    # TARGET_TABLE=catalog.products, HOLD_SECONDS=86400). Its only log line is
+    # "acquiring exclusive lock on catalog.products (migration step 1 of 3)";
+    # it then holds that lock for 24 h. Every product-catalog query on the table
+    # blocks behind it: postgres-0 working set 41 MiB -> 112 MiB in 12 min
+    # (one server process per stuck session), k6 request timeouts on
+    # /api/products, /api/recommendations, /api/checkout from 18:13Z, and
+    # max_connections=100 projected to be exhausted ~18:35Z.
+    # 551147cf was live on main 17:46:58Z-18:12:45Z with batch-active rendering
+    # to nothing (its sync pruned the last remaining resource); zero k6 timeouts
+    # and flat postgres memory in that window. With prune: true + allowEmpty,
+    # syncing this revision prunes the Job (terminationGracePeriodSeconds: 0),
+    # which ends the session holding the lock.
+    # Restore `targetRevision: main` only after catalog-maintenance has been
+    # removed or fixed in platform-config (no 24 h hold, lock_timeout,
+    # activeDeadlineSeconds, not during live traffic).
+    targetRevision: 551147cfe9cacaefe848632bca0db07ecfb3f02e
     path: batch-active
   destination:
     name: in-cluster
