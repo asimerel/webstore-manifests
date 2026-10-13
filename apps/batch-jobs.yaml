@@ -9,7 +9,26 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-13 16:45Z (Custom Batch Container Memory Climb): pinned
+    # to the last known-good platform-config revision.
+    # cf6a886b (auto-synced 16:29:50Z, health Healthy->Missing->Progressing,
+    # i.e. one new resource) added Deployment batch/session-indexer whose
+    # container writes ~1 MiB/min into a memory-backed emptyDir (/cache,
+    # medium: Memory, sizeLimit: 256Mi) while its container memory limit is
+    # 96Mi. tmpfs pages are charged to the container cgroup, so working_set ==
+    # cache (rss flat at 0.11 MiB) and it will be OOM-killed at ~96 MiB
+    # (projected ~18:05Z) long before the 256Mi volume limit could evict it;
+    # the emptyDir outlives container restarts, so the pod then stays in an
+    # OOMKilled loop. Network counters are flat (14 tx pkts total) despite
+    # "request timed out (upstream slow)" errors every 2 min - no real upstream.
+    # Same template (RS 957b58849) did the same thing on 2026-10-11 03:11Z-03:49Z.
+    # aecf31fd was live on main 16:04:49Z-16:29:50Z with batch-active
+    # rendering to nothing (batch namespace had zero workloads in that window).
+    # With prune: true, syncing this revision removes the Deployment.
+    # Restore `targetRevision: main` once session-indexer is fixed in
+    # platform-config (emptyDir sizeLimit < container limit or a disk-backed
+    # emptyDir, plus bounded cache eviction in the app).
+    targetRevision: aecf31fd7b8710cc232f16e0e66bfa74517f5b8c
     path: batch-active
   destination:
     name: in-cluster
