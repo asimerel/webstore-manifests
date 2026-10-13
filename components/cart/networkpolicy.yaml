@@ -1,0 +1,39 @@
+# Declares cart's ingress contract so it is owned alongside the workload.
+#
+# Context (incidents 2026-10-11 05:17Z and 2026-10-13 17:24Z, monitor
+# "Custom Shop Upstream Connect Timeouts"): a NetworkPolicy named
+# shop/restrict-cart-ingress (policyTypes: [Ingress], no ingress rules ==
+# deny-all-ingress) was applied to the shop namespace by the unrelated
+# `batch-jobs` Argo Application, whose source is platform-config/batch-active,
+# not this repo (2026-10-13: sync 00046-DVyWF of platform-config@8206afa6).
+# It cut off every caller of cart (frontend, checkout): "connect ETIMEDOUT
+# <cart ClusterIP>:8080" / "dial tcp ...: i/o timeout", taking down view-cart,
+# add-to-cart and checkout for all customers.
+#
+# NetworkPolicies are additive: a pod is reachable if ANY policy selecting it
+# allows the traffic. This policy restores reachability from the shop
+# namespace on the service port only, which is narrower than the pre-incident
+# state (no policy == allow-all) and does not depend on the other repo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-cart-ingress-from-shop
+  namespace: shop
+  labels:
+    app.kubernetes.io/component: cart
+    app.kubernetes.io/name: cart
+    app.kubernetes.io/part-of: webshop
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: cart
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: shop
+      ports:
+        - protocol: TCP
+          port: 8080
