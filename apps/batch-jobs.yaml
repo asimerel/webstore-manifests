@@ -9,7 +9,31 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-15 23:10Z (K8s Pod Startup Failure Monitor,
+    # batch/config-loader CreateContainerConfigError): pinned to the last
+    # known-good platform-config revision.
+    # 8d059712 (auto-synced 23:02:00Z; Argo task list was exactly
+    # "ConfigMap:batch/config-loader-settings nil->obj,
+    # Deployment:batch/config-loader nil->obj", nothing else) shipped a
+    # Deployment whose only env var is
+    # ENDPOINT_URL <- configMapKeyRef{config-loader-settings, key ENDPOINT_URL,
+    # optional: false}, but the ConfigMap it shipped alongside has only
+    # LOG_LEVEL and REGION. The kubelet refuses to create the container:
+    # "couldn't find key ENDPOINT_URL in ConfigMap batch/config-loader-settings"
+    # (26 Failed events in the first 5 min, then kubelet backoff; image pull
+    # itself succeeded). Deployment hit ProgressDeadlineExceeded at 23:12:01Z.
+    # Later main heads f98903ad (23:05Z) and e930390a (23:10Z) render
+    # batch-active identically (Argo stayed Synced, no new sync tasks), so no
+    # fix has landed upstream. Nothing in-cluster can supply the missing key;
+    # the manifest must change.
+    # e3dc7629 was synced 22:30:54Z (its task list pruned webhook-relay) and
+    # was live until 23:02:00Z with batch-active rendering to nothing; app
+    # Healthy, batch had zero workloads. With prune: true + allowEmpty,
+    # syncing this revision prunes the broken Deployment and its ConfigMap.
+    # Restore `targetRevision: main` once platform-config ships a
+    # config-loader-settings ConfigMap that actually contains ENDPOINT_URL
+    # (or a Deployment that does not require it).
+    targetRevision: e3dc7629965c3ca6cfcddba2df07f1b9db4238da
     path: batch-active
   destination:
     name: in-cluster
