@@ -9,7 +9,29 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-15 22:22Z (K8s Probe Failure Monitor,
+    # batch/webhook-relay CrashLoopBackOff): pinned to the last known-good
+    # platform-config revision.
+    # 2362eab7 (auto-synced 22:08:39Z; Argo task list was exactly
+    # "Deployment:batch/webhook-relay nil->obj", nothing else) added Deployment
+    # batch/webhook-relay (image webshop/webhook-relay:2026.09.09.1, tcpSocket
+    # probes on :9999, no containerPort, no Service). The process logs
+    # "listening on :9999" on every start, yet every kubelet probe to the pod
+    # IP gets "dial tcp 10.42.14.83:9999: connect: connection refused" (124+
+    # readiness failures, 0 successes), so the liveness probe kills it every
+    # ~70s (exit 137, 9 restarts in 17 min). Memory is 2.7Mi working set vs
+    # 32Mi limit, failcnt 0 - not OOM. The identical pod template
+    # (hash 9f5797b7c) did exactly the same on 2026-10-10 21:59Z-22:26Z on a
+    # different node until platform-config 040aea45 pruned it. Nothing
+    # in-cluster can make the port reachable; the image/manifest must change.
+    # 909b5144 was live on main 20:44:14Z-22:08:38Z with batch-active rendering
+    # to nothing (its sync pruned asset-syncer; app Healthy, batch had zero
+    # workloads until 22:08:39Z). With prune: true + allowEmpty, syncing this
+    # revision prunes the broken Deployment.
+    # Restore `targetRevision: main` once platform-config ships a webhook-relay
+    # that binds :9999 on the pod IP (0.0.0.0, not loopback) or probes the port
+    # it actually listens on.
+    targetRevision: 909b51446a2e2a52ba44c6adad2d81ca79dcfebb
     path: batch-active
   destination:
     name: in-cluster
