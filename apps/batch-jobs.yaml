@@ -9,7 +9,29 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-15 23:53Z (Custom Batch Error Log Flood,
+    # batch/audit-exporter): pinned to the last known-good platform-config
+    # revision.
+    # de7aebd0 (auto-synced 23:47:13Z; Argo task list was exactly
+    # "Deployment:batch/audit-exporter nil->obj", nothing else) shipped a
+    # Deployment whose only output is ~600 "ERROR upstream gateway timeout
+    # after 30000ms (attempt N) code=504" lines/min from its first second of
+    # life (attempt 1 at 23:47:17.217Z, one line every 100 ms, no backoff).
+    # The pod has no env/args/volumes/config pointing at any upstream and no
+    # Service/NetworkPolicy/ConfigMap anywhere references it. Its network
+    # counters are flat (13 tx packets / 936 bytes total in 10 min) while it
+    # claims ~4,800 thirty-second timeouts in that window (= 40 h of waiting),
+    # so the errors are generated, not observed. Same image and signature as
+    # the 2026-10-13 15:00Z incident (PR #8). At 596 lines/min it alone would
+    # emit ~860k lines/day, ~2x this org's entire current 24h log volume
+    # (401k lines).
+    # 0c20f549 was synced 23:18:17Z (its task list pruned config-loader and
+    # its ConfigMap) and was live until 23:47:13Z with batch-active rendering
+    # to nothing; app Healthy, batch had zero workloads. With prune: true +
+    # allowEmpty, syncing this revision prunes the Deployment.
+    # Restore `targetRevision: main` once audit-exporter is fixed or removed
+    # in platform-config (real upstream config, bounded retries with backoff).
+    targetRevision: 0c20f54931da5f142975a61b98837f4e9057230d
     path: batch-active
   destination:
     name: in-cluster
