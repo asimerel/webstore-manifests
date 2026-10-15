@@ -7,7 +7,17 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git # flag values are synced from the platform config repo
-    targetRevision: main
+    # INCIDENT 2026-10-15 19:37Z (Custom Payment Charge Failures): pinned to the
+    # last known-good platform-config revision. 10c9f683 (auto-synced 19:36:46Z)
+    # set paymentStrictTokenCheck.defaultVariant to "100%"; flagd hot-reloaded
+    # /etc/flagd/flags.json at 19:37:24Z and every charge since fails with
+    # "Payment request failed: card token rejected by processor" (0 "Transaction
+    # complete" after 19:37:30Z vs 2-7/min before; frontend returns
+    # "13 INTERNAL: failed to charge card" to customers on PlaceOrder).
+    # cd342006 was live 17:57:40Z-19:36:46Z with zero payment failures.
+    # Restore to `main` once platform-config/flagd-values sets
+    # paymentStrictTokenCheck back to "off" (or ramps it with monitoring).
+    targetRevision: cd3420069b15d7a1751ba0d878e97cf265578473
     path: flagd-values
   destination:
     name: in-cluster
