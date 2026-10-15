@@ -9,7 +9,27 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-15 18:57Z (K8s Pod Crash Monitor, batch/report-generator
+    # CrashLoopBackOff): pinned to the last known-good platform-config revision.
+    # 919e2ee1 (auto-synced 18:48:41Z; Argo task list was exactly
+    # "Deployment:batch/report-generator nil->obj", nothing else) added
+    # Deployment batch/report-generator (image webshop/report-generator:2026.09.09.1,
+    # no env/args/volumes/config, 32Mi limit). Every run logs "starting worker",
+    # then exactly 30 s later "fatal: connection refused, exiting" and exits 1;
+    # 6 restarts in 9 min, CrashLoopBackOff at 5m back-off. Nothing in the
+    # pod spec names a dependency, the batch namespace has no Service, and the
+    # container's eth0 counters are flat across restarts (13 tx pkts / 7 rx pkts
+    # total over 10 min - no SYN/RST per attempt), so the refused connection
+    # is not an in-cluster dependency we can restore from here.
+    # platform-config main has since moved to 983a8b7a and 93bce873 with no
+    # OutOfSync/sync - HEAD still renders the identical Deployment.
+    # 05d2288f was live on main 18:40:02Z-18:46:09Z with batch-active rendering
+    # to nothing (batch namespace had zero workloads/events before 18:48:41Z).
+    # With prune: true + allowEmpty, syncing this revision prunes the Deployment.
+    # Restore `targetRevision: main` once report-generator is fixed or removed
+    # in platform-config (real target address via env/config, startup
+    # dependency check, and a wait-for initContainer like the shop components).
+    targetRevision: 05d2288f7cd324784be4acd213eb896a8f8bcc77
     path: batch-active
   destination:
     name: in-cluster
