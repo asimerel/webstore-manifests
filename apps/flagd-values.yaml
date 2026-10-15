@@ -7,7 +7,20 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git # flag values are synced from the platform config repo
-    targetRevision: main
+    # INCIDENT 2026-10-15 21:21Z (K8s Pod Network Receive Anomaly, shop/cart):
+    # pinned to the last known-good platform-config revision. f7b99c23 (auto-synced
+    # 21:11:55Z, flagd hot-reloaded /etc/flagd/flags.json at 21:12:50Z) set
+    # cartSecondaryStoreShare.defaultVariant to "100%". From 21:13Z cart logs
+    # "FailedPrecondition: Can't access cart storage ... Wasn't able to connect to
+    # redis" (ValkeyCartStore.EnsureRedisConnected) on Get/Add/EmptyCart, its
+    # inbound traffic rose from ~25 KB/s to a 657 KB/s peak (small packets, 200 ->
+    # 3,500 pkt/s) with coredns traffic tripling in step and cart CPU 60m -> 250m,
+    # while client load (5 k6 VUs, frontend/checkout tx) was flat.
+    # 7e1fb1c7 was live 19:56:22Z-21:11:55Z with zero cart storage failures and
+    # zero payment token rejections. Restore to `main` once platform-config/
+    # flagd-values sets cartSecondaryStoreShare back to "off" (or ramps it only
+    # after the secondary store endpoint is reachable from shop/cart).
+    targetRevision: 7e1fb1c72bce4f5fa2cbf2db2c3c3603b5f2f21e
     path: flagd-values
   destination:
     name: in-cluster
