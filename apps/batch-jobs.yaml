@@ -9,7 +9,25 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-15 20:32Z (K8s Pod Startup Failure Monitor,
+    # batch/asset-syncer ImagePullBackOff): pinned to the last known-good
+    # platform-config revision.
+    # 42d08b41 (auto-synced 20:24:35Z; Argo task list was exactly
+    # "Deployment:batch/asset-syncer nil->obj", nothing else) added Deployment
+    # batch/asset-syncer with image
+    # public.ecr.aws/v4z2v9g0/webshop/asset-syncer:2026.09.09.1-hotfix1.
+    # That tag does not exist: the registry returns NotFound on every pull
+    # (5x ErrImagePull, 20+ ImagePullBackOff in 9 min) and the public ECR
+    # tag list for webshop/asset-syncer contains only "2026.09.09.1". The pod
+    # has never started; nothing in-cluster can make the tag appear.
+    # f77aa79d was live on main 19:07:13Z-20:24:34Z with batch-active rendering
+    # to nothing (its sync pruned report-generator; batch had zero workloads
+    # until 20:24:35Z). With prune: true + allowEmpty, syncing this revision
+    # prunes the broken Deployment.
+    # Restore `targetRevision: main` once platform-config either points
+    # asset-syncer at a tag that exists in the registry (currently only
+    # 2026.09.09.1) or the hotfix1 image is actually pushed.
+    targetRevision: f77aa79d879e9eae988044e49204192ebaa00250
     path: batch-active
   destination:
     name: in-cluster
