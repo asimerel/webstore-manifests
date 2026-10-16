@@ -9,7 +9,33 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 06:34:00Z ("Default Service Anomaly Monitor",
+    # service.name:recommendation, pattern_anomaly): pinned to the last
+    # known-good platform-config revision.
+    # ca2e698f (auto-synced 06:17:27Z) added Job batch/credential-rotator
+    # (image webshop/credential-rotator:2026.09.15.1, ROTATE_ROLE=shop_user,
+    # authenticating with the db-maintenance secret). It ran once and
+    # completed at 06:17:37Z: "ALTER ROLE ... password rotated for shop_user
+    # ... closed 2 open sessions for shop_user; consumers must reconnect".
+    # The only consumer of shop_user, shop/product-catalog, has a static
+    # DB_CONNECTION_STRING (postgres://shop_user:shop_password@...) and was
+    # never given the new password, so every query since 06:17Z fails with
+    # 'pq: password authentication failed for user "shop_user" (28P01)'
+    # (postgres-0 FATAL lines start 06:17Z; ~60/min sustained). recommendation
+    # -> product-catalog ListProducts returns INTERNAL, and frontend's
+    # recommendation calls fail with the same error (0 errors before 06:17Z).
+    # 6d8712b1 was auto-synced 05:49:15Z and live until 06:17:27Z: app
+    # Synced/Healthy, batch namespace had no workloads (that sync pruned the
+    # archive-writer Deployment+PVC from the previous incident).
+    # With prune: true + allowEmpty, syncing it prunes only the completed Job
+    # batch/credential-rotator and its finished pod, and changes nothing else.
+    # This does NOT restore the password: a DBA must reset shop_user to the
+    # value product-catalog uses (or product-catalog must be given the rotated
+    # one). The pin prevents selfHeal/prune from re-creating and re-running
+    # the Job (which would rotate the password again after the DBA fix).
+    # Restore `targetRevision: main` once platform-config/batch-active either
+    # drops the rotator or rotates the credential together with its consumer.
+    targetRevision: 6d8712b1a2b5c0e46aedf1d76201baeb74c224d2
     path: batch-active
   destination:
     name: in-cluster
