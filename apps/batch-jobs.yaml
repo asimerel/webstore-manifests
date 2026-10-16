@@ -9,7 +9,38 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 10:11:48Z (K8s Workload Failure Monitor: shop/recommendation
+    # FailedCreate): pinned to the last known-good platform-config revision.
+    #
+    # 23550e4c was auto-synced 10:00:57Z (syncId 00098-OYqvO; Argo task list exactly
+    # "admissionregistration.k8s.io/ValidatingWebhookConfiguration:batch/pod-policy
+    # nil->obj", nothing else). It created the cluster-scoped
+    # ValidatingWebhookConfiguration "pod-policy", whose webhook
+    # "pod-policy.platform-ops.svc" calls Service pod-policy-webhook in namespace
+    # platform-ops. Neither the Service nor the namespace exists, and the webhook
+    # fails closed, so the apiserver rejects every matching Pod CREATE:
+    #   Internal error occurred: failed calling webhook "pod-policy.platform-ops.svc":
+    #   Post "https://pod-policy-webhook.platform-ops.svc:443/validate?timeout=5s":
+    #   service "pod-policy-webhook" not found
+    # When pod recommendation-645894ccf4-6tc7p was deleted at 10:03:03Z the
+    # ReplicaSet could not replace it (17x FailedCreate by 10:03:44Z); shop/recommendation
+    # is 0/1 with no endpoints and frontend logs "14 UNAVAILABLE ... ECONNREFUSED
+    # 172.20.220.46:8080" on every recommendations call (67 by 10:13Z, 0 before 10:03Z).
+    # Any other Pod creation the webhook matches would fail the same way.
+    #
+    # 29097846 was auto-synced 09:32:02-09:32:33Z (syncIds 00093-00097; its only tasks
+    # pruned Deployment/cache-warmer, Deployment/report-generator, Job/cache-warmer-fill)
+    # and was live until 10:00:57Z with batch-active rendering to nothing: app
+    # Synced/Healthy, zero Argo sync tasks and zero tracked objects for those 28 min.
+    # With prune: true + allowEmpty, syncing it prunes exactly the one object created
+    # at 10:00:57Z (ValidatingWebhookConfiguration/pod-policy) and changes nothing else.
+    # Once the webhook is gone the ReplicaSet controller's next retry creates the pod.
+    #
+    # Revert to targetRevision: main once platform-config either removes the webhook
+    # from batch-active/ or ships the platform-ops namespace + pod-policy-webhook
+    # Service/Deployment it points at (ideally with failurePolicy: Ignore and a
+    # namespaceSelector that excludes shop).
+    targetRevision: 29097846cec0d600d633801d63942a8d361992c2
     path: batch-active
   destination:
     name: in-cluster
