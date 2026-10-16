@@ -9,7 +9,28 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 04:01Z (K8s Pod Crash Monitor, CrashLoopBackOff on
+    # batch/media-transcoder-54d8fbddc-75tw2): pinned to the last known-good
+    # platform-config revision.
+    # b5f94437 (auto-synced 03:53:31Z, syncId 00069; Argo task list was exactly
+    # "apps/Deployment:batch/media-transcoder nil->obj", nothing else) added
+    # Deployment batch/media-transcoder. The container stages a 128 MiB scratch
+    # file (SCRATCH_MIB=128) into /dev/shm, but the pod declares no volumes, so
+    # /dev/shm is the runtime default 64 MiB tmpfs: "scratch write failed:
+    # shm 64.0M 64.0M 0 100% /dev/shm", exit 1 within ~1s of every start,
+    # 7 restarts / 12 BackOff events in 11 min. Same RS template (54d8fbddc,
+    # pod -h5sm5) crash-looped identically on 2026-10-11 04:12Z-04:48Z.
+    # 8c18b9f3 was auto-synced 03:24:06Z (syncId 00068; its task list only
+    # pruned Deployment batch/session-indexer) and was live until 03:53:31Z
+    # with batch-active rendering to nothing: app Synced/Healthy, batch
+    # namespace had zero workloads for those 29 min. With prune: true +
+    # allowEmpty, syncing this revision removes only the media-transcoder
+    # Deployment and changes nothing else.
+    # Restore `targetRevision: main` once media-transcoder is fixed in
+    # platform-config (mount an emptyDir{medium: Memory, sizeLimit >= 128Mi}
+    # at /dev/shm and raise the container memory limit above SCRATCH_MIB, or
+    # stage scratch on a disk-backed emptyDir instead of /dev/shm).
+    targetRevision: 8c18b9f3c367505faf2012dfb2ce59dacea26bf5
     path: batch-active
   destination:
     name: in-cluster
