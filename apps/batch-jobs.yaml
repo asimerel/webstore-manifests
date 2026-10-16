@@ -9,7 +9,30 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 03:14Z (Custom Batch Container Memory Climb,
+    # batch/session-indexer-957b58849-v22sq): pinned to the last known-good
+    # platform-config revision.
+    # 25c943dd (auto-synced 03:02:41Z, syncId 00062; Argo task list was exactly
+    # "apps/Deployment:batch/session-indexer nil->obj", nothing else) added
+    # Deployment batch/session-indexer. Its container writes ~1 MiB/min into a
+    # memory-backed emptyDir (/cache, medium: Memory, sizeLimit: 256Mi) while
+    # the container memory limit is 96Mi. tmpfs pages are charged to the
+    # container cgroup: working_set == memory.cache (1 -> 14 MiB in 03:03Z-03:16Z),
+    # rss flat at 0.11 MiB. The 256Mi volume limit is never reached; the
+    # container is OOM-killed at 96Mi (projected ~04:38Z) and, because the
+    # emptyDir outlives container restarts, it then stays in an OOMKilled loop.
+    # Same template (RS 957b58849) did the same thing on 2026-10-11 and
+    # 2026-10-13 (PR #9).
+    # c9296ef0 was auto-synced 02:32:58Z (syncIds 00060-00061; its task list
+    # only pruned ResourceQuota shop/platform-limits, then "[]") and was live
+    # until 03:02:41Z with batch-active rendering to nothing: app Synced/Healthy,
+    # batch namespace had zero workloads for those 30 min. With prune: true +
+    # allowEmpty, syncing this revision removes only the session-indexer
+    # Deployment and changes nothing else.
+    # Restore `targetRevision: main` once session-indexer is fixed in
+    # platform-config (disk-backed emptyDir or sizeLimit < container limit, plus
+    # bounded cache eviction in the app).
+    targetRevision: c9296ef066abf309a0684a2b402a75e10619aced
     path: batch-active
   destination:
     name: in-cluster
