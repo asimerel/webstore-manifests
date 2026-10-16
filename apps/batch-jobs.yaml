@@ -9,7 +9,29 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 04:50:59Z ("Custom Shop Upstream Connect Timeouts",
+    # service.name:frontend, k8s.namespace.name:shop): pinned to the last
+    # known-good platform-config revision.
+    # 48c72484 (auto-synced 04:41:13Z) added NetworkPolicy
+    # shop/restrict-cart-ingress (podSelector app.kubernetes.io/name=cart,
+    # policyTypes [Ingress], NO ingress rules == deny-all-ingress). It is the
+    # only resource this Application manages (tracking-id
+    # batch-jobs:networking.k8s.io/NetworkPolicy:shop/restrict-cart-ingress;
+    # the batch namespace is empty). From 04:41 every caller of cart times out
+    # on the cart ClusterIP 172.20.32.230:8080: frontend "connect ETIMEDOUT"
+    # (view-cart / add-to-cart) and checkout->cart "dial tcp ... i/o timeout"
+    # surfaced by frontend as "13 INTERNAL: cart failure: failed to get user
+    # cart during checkout". cart pod itself is Running/Ready; its request log
+    # drops from ~30-60 calls/min to zero at 04:41. Same NetworkPolicy caused
+    # the 2026-10-11 05:17Z and 2026-10-13 17:24Z incidents (see closed PR #10).
+    # b1340050 was auto-synced 04:11:00Z and live until 04:41:13Z: app
+    # Synced/Healthy, batch namespace empty, cart traffic normal for those
+    # 30 min. With prune: true + allowEmpty, syncing it prunes only the
+    # NetworkPolicy and changes nothing else in the cluster.
+    # Restore `targetRevision: main` once the NetworkPolicy is removed from
+    # platform-config/batch-active (or rewritten with an ingress rule allowing
+    # the shop namespace on TCP/8080, and moved out of the batch-jobs app).
+    targetRevision: b1340050a70b6b53ff1592ee077ecfc1e909cf30
     path: batch-active
   destination:
     name: in-cluster
