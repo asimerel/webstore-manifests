@@ -9,7 +9,32 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 05:39:42Z ("K8s Pod Placement Monitor",
+    # k8s.namespace.name:batch, k8s.deployment.name:archive-writer,
+    # event.type:FailedScheduling): pinned to the last known-good
+    # platform-config revision.
+    # 6a1e4bde (auto-synced 05:31:12Z) added Deployment batch/archive-writer
+    # and PersistentVolumeClaim batch/archive-writer with
+    # storageClassName: gp3-archive. That StorageClass does not exist in the
+    # cluster (persistentvolume-controller: ProvisioningFailed
+    # 'storageclass.storage.k8s.io "gp3-archive" not found', every 15s since
+    # 05:31:13Z; the only bound PVCs in the cluster use class "gp3"). The PVC
+    # is stuck Pending/unbound, so the scheduler rejects the pod
+    # ('0/3 nodes are available: pod has unbound immediate
+    # PersistentVolumeClaims') and cluster-autoscaler refuses to scale
+    # ('1 pod has unbound immediate PersistentVolumeClaims'). The Deployment
+    # has 0/1 available since creation; Argo health went
+    # Healthy -> Missing -> Progressing -> Degraded (05:41Z).
+    # fe3868a7 was auto-synced 05:03:24Z and live until 05:31:12Z: app
+    # Synced/Healthy and the batch namespace empty (its sync only pruned the
+    # NetworkPolicy shop/restrict-cart-ingress from the previous incident).
+    # With prune: true + allowEmpty, syncing it prunes only the two
+    # archive-writer resources (Deployment + the never-bound PVC; no PV was
+    # ever provisioned, so no data is lost) and changes nothing else.
+    # Restore `targetRevision: main` once platform-config/batch-active
+    # references an existing StorageClass (e.g. gp3) or the gp3-archive
+    # StorageClass has been created by the storage owners.
+    targetRevision: fe3868a73c24a8bfefca20544f05013305f3789a
     path: batch-active
   destination:
     name: in-cluster
