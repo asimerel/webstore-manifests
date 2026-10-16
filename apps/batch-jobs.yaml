@@ -9,7 +9,33 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 07:25:58Z ("K8s Pod Placement Monitor",
+    # k8s.namespace.name:batch, k8s.deployment.name:index-store,
+    # event.type:FailedScheduling): pinned to the last known-good
+    # platform-config revision.
+    # b6468051 (auto-synced 07:17:58Z, syncId 00084) added three resources:
+    # PersistentVolume index-store, PersistentVolumeClaim batch/index-store
+    # (storageClassName: local-archive) and Deployment batch/index-store.
+    # The PV is a local volume with a node affinity that no node in the
+    # cluster satisfies: default-scheduler reports '0/3 nodes are available:
+    # 3 node(s) didn't match PersistentVolume's node affinity' and
+    # cluster-autoscaler refuses to scale because even its node-group
+    # template node fails the VolumeBinding predicate (so the affinity is a
+    # specific hostname, not a zone). The cluster's nodes are
+    # ip-10-42-35-0 / ip-10-42-25-203 / ip-10-42-0-165; ip-10-42-0-211 was
+    # deleted by cloud-node-lifecycle-controller at 2026-10-15 17:18:27Z and
+    # replaced by ip-10-42-0-165 at 18:01Z. The pod has been Pending since
+    # creation; the Deployment is 0/1 available.
+    # d9babffc was auto-synced 06:48:23Z and live until 07:17:58Z: app
+    # Synced/Healthy with the batch namespace empty (that sync only pruned
+    # Job credential-rotator; its dry-run task list was []).
+    # With prune: true + allowEmpty, syncing it prunes only the three
+    # index-store resources. The PV was never mounted by any pod (nothing
+    # could schedule), so no data is lost. Nothing else changes.
+    # Restore `targetRevision: main` once platform-config/batch-active ships
+    # a PV whose nodeAffinity names a live node (or uses a dynamic
+    # StorageClass / WaitForFirstConsumer binding instead of a static pin).
+    targetRevision: d9babffc4207bf3282d5b968e9f2cea236936699
     path: batch-active
   destination:
     name: in-cluster
