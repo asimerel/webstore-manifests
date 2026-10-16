@@ -9,7 +9,14 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 ~10:51Z (Custom Batch Error Log Flood, audit-exporter):
+    # platform-config main @ d5557a70d86f1e05eda320f2b22d23bce497e294 added
+    # batch/audit-exporter (stub emitting ~600 fabricated "upstream gateway
+    # timeout" ERROR lines/min, zero network I/O) and batch/asset-syncer
+    # (image tag 2026.09.09.1-hotfix1 does not exist -> ImagePullBackOff).
+    # Pinned to the last-good synced revision so Argo prunes both. Restore
+    # `main` once platform-config has been fixed upstream.
+    targetRevision: f26c6ddc244281dabee0e7a7b7724817469e0c69
     path: batch-active
   destination:
     name: in-cluster
