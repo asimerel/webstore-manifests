@@ -9,7 +9,31 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 08:14:58Z ("Custom Postgres Backend Memory Climb",
+    # k8s.namespace.name:datastore, k8s.pod.name:postgres-0): pinned to the
+    # last known-good platform-config revision.
+    # 29c64118 (auto-synced 08:05:33Z) added Job batch/catalog-maintenance
+    # (image webshop/catalog-maintenance:2026.09.15.1, TARGET_TABLE
+    # catalog.products, HOLD_SECONDS=86400). Its only log output is
+    # "acquiring exclusive lock on catalog.products (migration step 1 of 3)";
+    # it then holds that ACCESS EXCLUSIVE lock for 24h. Every product-catalog
+    # read of catalog.products queues behind it, so postgres-0 backends pile
+    # up: working set flat at ~41.5 MiB for hours, then +5-7 MiB/min from
+    # 08:05 (47 MiB) to 08:14 (102 MiB). Shop impact: load-generator saw 0
+    # "Request Failed" in the prior 2h and 42 in 08:05-08:20, all "request
+    # timeout" (32x GET /api/products/<id>, 6x GET /api/recommendations,
+    # 4x POST /api/checkout).
+    # 098a8907 was auto-synced 07:45:12Z and live until 08:05:33Z: app
+    # Synced/Healthy with the batch namespace empty (Job/catalog-maintenance
+    # is the only Argo-tracked object in batch, created 08:05:33Z).
+    # With prune: true + allowEmpty, syncing it prunes only that Job; its pod
+    # has terminationGracePeriodSeconds: 0, so the postgres session drops,
+    # the open transaction aborts and the lock is released. No DDL had been
+    # applied (the job never got past step 1), so nothing to roll back.
+    # Restore `targetRevision: main` once platform-config/batch-active ships
+    # a catalog-maintenance that does not hold an exclusive lock on a live
+    # table for HOLD_SECONDS (or runs with lock_timeout / outside traffic).
+    targetRevision: 098a89076e0e7f0a5d9dcb0795a509f598983333
     path: batch-active
   destination:
     name: in-cluster
