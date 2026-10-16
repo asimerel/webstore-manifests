@@ -9,7 +9,47 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 09:04:58Z (K8s Pod Crash Monitor: batch/report-generator
+    # CrashLoopBackOff): pinned to the last known-good platform-config revision.
+    #
+    # 69640100 was auto-synced 08:55:15Z (syncId 00091; Argo task list exactly
+    # "Deployment:batch/cache-warmer nil->obj, Deployment:batch/report-generator
+    # nil->obj, Job:batch/cache-warmer-fill nil->obj", nothing else). It shipped:
+    #  - Deployment report-generator (webshop/report-generator:2026.09.09.1, no
+    #    env/args). The image entrypoint is a 5-line shell stub:
+    #      echo 'starting worker'; sleep 30;
+    #      echo 'fatal: connection refused, exiting'; exit 1
+    #    It opens no connection; the "connection refused" is hard-coded. It has
+    #    never run successfully (identical loop on 2026-10-15 18:35-19:00Z,
+    #    pod report-generator-5f764bd8fc-l7lt7). 7 restarts / exit 1 by 09:10Z.
+    #  - Job cache-warmer-fill + Deployment cache-warmer, both pointed at the
+    #    cart service's storage redis.datastore.svc.cluster.local:6379. The
+    #    Job (fill, FILL_TARGET_BYTES=251658240, CACHE_MAXMEMORY=128mb) wrote
+    #    2,550 warm:* keys with no TTL to used_memory=252,570,200 then ran
+    #    CONFIG SET maxmemory 128mb (redis-0 log 08:55:52Z). redis runs
+    #    maxmemory-policy=noeviction, so every write is rejected: cart AddItem
+    #    -> "OOM command not allowed when used memory > 'maxmemory'" from
+    #    08:56Z (122 of 380 AddItem calls in the 30 min to 09:10Z; 0 in the
+    #    6h before), frontend returns FAILED_PRECONDITION/"Can't access cart
+    #    storage" (216 errors 08:56-09:06Z, 0 earlier today). The Deployment
+    #    (refresh) keeps writing warm:* keys and would refill freed memory.
+    #    This is a recurrence of the 01:22Z incident (see PR #20).
+    #
+    # 3d0397b6 was auto-synced 08:25:43Z (syncId 00089; its only task pruned
+    # Job/catalog-maintenance) and was live until 08:55:15Z with batch-active
+    # rendering to nothing: app Synced/Healthy, zero Argo-tracked objects in
+    # batch for those 30 min. With prune: true + allowEmpty, syncing it prunes
+    # exactly the three objects created at 08:55:15Z and changes nothing else.
+    #
+    # NOTE: this stops the writer and the crash loop; it does NOT free the
+    # ~252 MB of warm:* keys already in redis (AOF-persisted) or restore
+    # maxmemory to the manifest's 256mb (CONFIG SET is not persisted). An
+    # operator with redis access must UNLINK warm:* and CONFIG SET maxmemory
+    # 256mb for cart writes to recover.
+    # Restore `targetRevision: main` once platform-config/batch-active drops
+    # report-generator (or ships a real image) and removes cache-warmer or
+    # points it at its own redis instance.
+    targetRevision: 3d0397b651766e9f2d008a9dfbb69768e1f9d4d0
     path: batch-active
   destination:
     name: in-cluster
