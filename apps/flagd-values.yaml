@@ -7,7 +7,12 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git # flag values are synced from the platform config repo
-    targetRevision: main
+    # INCIDENT 2026-10-16 (K8s Pod Network Receive Anomaly, shop/flagd): platform-config
+    # c7afa46b (synced 11:53:11Z) set browseJourneyConcurrency 5 -> 50, i.e. a 10x
+    # synthetic-load increase on every shop service. c5b1640 is the last revision whose
+    # flagd-values matched the running ConfigMap before the change. Revert to `main` once
+    # platform-config has restored the flag (or the 50-VU level is confirmed intentional).
+    targetRevision: c5b1640270e57f854eccceac2e5d35dee9432132
     path: flagd-values
   destination:
     name: in-cluster
