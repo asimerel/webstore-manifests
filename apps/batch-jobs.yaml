@@ -9,7 +9,32 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 02:14Z (K8s Workload Failure Monitor, FailedCreate,
+    # shop/recommendation): pinned to the last known-good platform-config
+    # revision.
+    # 3afd97c4 (auto-synced 02:12:05Z, syncId 00059; Argo task list was exactly
+    # "ResourceQuota:shop/platform-limits nil->obj", nothing else) shipped a
+    # ResourceQuota into the *shop* namespace (not batch) with
+    # hard.requests.cpu=8. A quota that constrains requests.cpu makes the
+    # apiserver reject every pod in that namespace that does not set a CPU
+    # request. 12 of 13 shop Deployments set no requests.cpu (only flagd does),
+    # so none of them can be rescheduled while the quota exists. At 02:14:11Z
+    # kubelet stopped recommendation-6bfd5dbcdc-2pnm6 and the ReplicaSet could
+    # not replace it: 'pods "recommendation-6bfd5dbcdc-xxxxx" is forbidden:
+    # failed quota: platform-limits: must specify requests.cpu for:
+    # recommendation'. recommendation is 0/1 with no endpoints; frontend logs
+    # "14 UNAVAILABLE ... ECONNREFUSED 172.20.220.46:8080" (recommendation
+    # ClusterIP) from 02:14:47Z.
+    # 48774dba was synced 01:42:21Z (syncIds 00054-00058; its task list only
+    # pruned cache-warmer) and was live until 02:12:05Z with batch-active
+    # rendering to nothing; app Synced, batch had zero workloads for those
+    # 30 min and still has none. With prune: true + allowEmpty, syncing this
+    # revision prunes only the ResourceQuota and changes nothing else; the
+    # recommendation ReplicaSet then recreates its pod on its own.
+    # Restore `targetRevision: main` once platform-limits is removed from
+    # platform-config or scoped to batch (and, if a shop quota on requests.cpu
+    # is actually intended, only after every shop workload sets a CPU request).
+    targetRevision: 48774dba334800b4a6a403f36ff1b22e3ed9ec54
     path: batch-active
   destination:
     name: in-cluster
