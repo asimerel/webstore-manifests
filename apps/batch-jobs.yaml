@@ -9,7 +9,27 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 00:42Z (K8s Pod Crash Monitor, batch/thumbnailer
+    # CrashLoopBackOff): pinned to the last known-good platform-config revision.
+    # bf6b4dc4 (auto-synced 00:34:19Z, syncId 00050; Argo task list was exactly
+    # "Deployment:batch/thumbnailer nil->obj", nothing else) shipped a
+    # Deployment (image webshop/thumbnailer:2026.09.09.1, requests 32Mi,
+    # limits.memory 64Mi) whose container logs a single line "loading dataset
+    # into memory" and is OOMKilled (exit 137) ~15 s later, every start:
+    # 7 starts / 6 restarts in 8 min, back-off now 5m, Deployment Available=False.
+    # The pod has no env/args/volumes/config, nothing references it (no
+    # Service, no other workload, no other consumer of the image), so there
+    # is no in-cluster knob to fix it; the dataset it loads simply does not
+    # fit in 64Mi. The fix belongs in platform-config (right-size the limit
+    # or ship a smaller dataset).
+    # abd5876d was synced 00:05:50Z-00:06:16Z (syncIds 00045-00049; its task
+    # list only pruned audit-exporter) and was live until 00:34:19Z with
+    # batch-active rendering to nothing; app Synced, batch had zero workloads
+    # for those 28 min. With prune: true + allowEmpty, syncing this revision
+    # prunes the thumbnailer Deployment and changes nothing else.
+    # Restore `targetRevision: main` once thumbnailer is fixed or removed in
+    # platform-config.
+    targetRevision: abd5876db39c58f3169a810a4954b4b84254c6c9
     path: batch-active
   destination:
     name: in-cluster
