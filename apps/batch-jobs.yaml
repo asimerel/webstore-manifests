@@ -9,7 +9,38 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-16 01:30Z (Custom Cart Storage Write Rejections,
+    # shop/cart): pinned to the last known-good platform-config revision.
+    # 5fdbd735 (auto-synced 01:22:40Z, syncId 00053; Argo task list was exactly
+    # "Deployment:batch/cache-warmer nil->obj, Job:batch/cache-warmer-fill
+    # nil->obj", nothing else) shipped a Job and a Deployment that both point
+    # at the cart service's storage, redis.datastore.svc.cluster.local:6379.
+    # The Job (`fill`, FILL_TARGET_BYTES=251658240, PAYLOAD_BYTES=65536,
+    # CACHE_MAXMEMORY=128mb) wrote 2,550 `warm:*` keys with no TTL until
+    # used_memory=252,525,016 bytes, then ran CONFIG SET maxmemory 128mb
+    # (redis-0 log 01:23:18Z: "new maxmemory value ... is smaller than the
+    # current memory usage (252525072)"). The instance runs
+    # maxmemory-policy=noeviction (required by cart, see
+    # components/redis/statefulset.yaml), so every subsequent write is
+    # rejected: cart AddItem -> "OOM command not allowed when used memory >
+    # 'maxmemory'" from 01:23:25Z, 100% of AddItem calls failing; frontend
+    # returns FAILED_PRECONDITION; checkout quoting stopped at 01:23:02Z.
+    # The Deployment (`refresh`, PAYLOAD_BYTES=4096) keeps writing `warm:*`
+    # keys and would refill any memory an operator frees.
+    # 4ada8e18 was synced 00:51:45Z (syncIds 00051-00052; its task list only
+    # pruned thumbnailer) and was live until 01:22:40Z with batch-active
+    # rendering to nothing; app Synced, batch had zero workloads for those
+    # 31 min. With prune: true + allowEmpty, syncing this revision prunes the
+    # cache-warmer Deployment and the completed cache-warmer-fill Job and
+    # changes nothing else.
+    # NOTE: this stops the writer and prevents re-runs; it does NOT free the
+    # ~252 MB of `warm:*` keys already in redis (AOF-persisted, survive a
+    # restart) or restore maxmemory to the manifest's 256mb (CONFIG SET is not
+    # persisted). An operator with redis access must UNLINK `warm:*` and run
+    # CONFIG SET maxmemory 256mb for cart writes to recover.
+    # Restore `targetRevision: main` once cache-warmer is removed from
+    # platform-config or pointed at its own redis instance.
+    targetRevision: 4ada8e18105bbd68c71ac8125de4bf061cdf4ccf
     path: batch-active
   destination:
     name: in-cluster
