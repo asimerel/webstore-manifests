@@ -9,7 +9,31 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 22:37Z (K8s Workload Failure Monitor, FailedCreate,
+    # shop/recommendation): pinned to the last known-good platform-config
+    # revision.
+    # f3c60376 (auto-synced 22:27:56Z) shipped ResourceQuota
+    # shop/platform-limits (hard.requests.cpu=8) into the *shop* namespace,
+    # not batch (tracking-id batch-jobs:/ResourceQuota:shop/platform-limits).
+    # A quota that constrains requests.cpu makes the apiserver reject every
+    # pod in that namespace that does not set a CPU request. 12 of 13 shop
+    # Deployments set no requests.cpu (only flagd does). At 22:30:02Z kubelet
+    # stopped recommendation-6bfd5dbcdc-zsdzx and the ReplicaSet could not
+    # replace it: 'pods "recommendation-6bfd5dbcdc-xxxxx" is forbidden:
+    # failed quota: platform-limits: must specify requests.cpu for:
+    # recommendation'. recommendation is 0/1 with no endpoints; frontend logs
+    # "code: 14 ... connect ECONNREFUSED 172.20.179.225:8080" (recommendation
+    # ClusterIP) from 22:30Z.
+    # a831baea was synced 21:58:35Z, Synced/Healthy at 21:59:06Z and live
+    # until 22:27:56Z; the batch namespace holds no workloads and the only
+    # object the batch-jobs app owns today is this ResourceQuota. With
+    # prune: true + allowEmpty, syncing a831baea prunes only the quota and
+    # changes nothing else; the recommendation ReplicaSet then recreates its
+    # pod on its own.
+    # Restore `targetRevision: main` once platform-limits is removed from
+    # platform-config or scoped to batch (and, if a shop quota on requests.cpu
+    # is actually intended, only after every shop workload sets a CPU request).
+    targetRevision: a831baeacbf2d951358ec93c55c5a368a51e703b
     path: batch-active
   destination:
     name: in-cluster
