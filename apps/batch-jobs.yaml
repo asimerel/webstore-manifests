@@ -9,7 +9,29 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 20:59Z (K8s Pod Crash Monitor, batch/thumbnailer
+    # CrashLoopBackOff): pinned to the last known-good platform-config revision.
+    # 94e44f63 (auto-synced 20:51:04Z, syncId 00046; Argo task list was exactly
+    # "Deployment:batch/thumbnailer nil->obj", nothing else) shipped a
+    # Deployment (image webshop/thumbnailer:2026.09.09.1, requests 32Mi,
+    # limits.memory 64Mi) whose container logs a single line "loading dataset
+    # into memory" and is OOMKilled (exit 137) ~15 s later, every start:
+    # 7 starts / 6 restarts in 8 min, back-off at 5m, Deployment Available=False.
+    # The pod has no env/args/volumes/config, nothing references it (no
+    # Service, no other workload, no other consumer of the image), so there
+    # is no in-cluster knob to fix it; the dataset it loads does not fit in
+    # 64Mi. The fix belongs in platform-config (right-size the limit or ship
+    # a smaller dataset). Same failure as the 2026-10-16 00:42Z incident.
+    # ef5829d3 was synced 20:20:54Z-20:21:20Z (syncIds 00041-00045; its task
+    # list only pruned audit-exporter) and was live until 20:51:04Z with
+    # batch-active rendering to nothing; app Synced, batch had zero workloads
+    # for those 30 min. Deployment batch/thumbnailer is currently the only
+    # object in the cluster tracked by this Application, so with prune: true +
+    # allowEmpty, syncing this revision prunes thumbnailer and changes nothing
+    # else.
+    # Restore `targetRevision: main` once thumbnailer is fixed or removed in
+    # platform-config.
+    targetRevision: ef5829d368f452727062e793fee7e27fb7ee0964
     path: batch-active
   destination:
     name: in-cluster
