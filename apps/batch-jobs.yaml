@@ -9,7 +9,16 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 16:36Z (K8s Pod Startup Failure Monitor, batch/asset-syncer):
+    # platform-config main @ 57dee37054bdf9bc911e125bf60c09a63d881d90 (auto-synced 16:36:11Z)
+    # added batch-active/ Deployment asset-syncer with image
+    # public.ecr.aws/v4z2v9g0/webshop/asset-syncer:2026.09.09.1-hotfix1. That tag does not
+    # exist in the registry (only 2026.09.09.1 is published) -> ErrImagePull/ImagePullBackOff,
+    # 0/1 available, ProgressDeadlineExceeded at 16:46:13Z. 2d868388 is the last revision with
+    # a successful sync (15:22:26Z); under it batch-active/ manages no resources, so Argo will
+    # prune the never-started asset-syncer Deployment. Restore `main` once platform-config
+    # points asset-syncer at a published tag (or the hotfix1 image has been pushed).
+    targetRevision: 2d8683886e405569bfcb750c50b5edfa2813aef6
     path: batch-active
   destination:
     name: in-cluster
