@@ -9,7 +9,19 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 18:40Z (K8s Probe Failure Monitor, batch/webhook-relay-9f5797b7c-nsft5):
+    # platform-config main @ 436b13faca7520c05011ece004abe3f6f716deb3 (auto-synced 18:26:45Z)
+    # added batch-active/ Deployment webhook-relay with image
+    # public.ecr.aws/v4z2v9g0/webshop/webhook-relay:2026.09.09.1 and tcpSocket probes on :9999.
+    # That image's entrypoint is a stub shell script (echo 'listening on :9999'; exec sleep
+    # infinity) - it never opens a socket, so readiness/liveness get "connection refused" on
+    # every attempt, kubelet kills the container every ~70s (exit 137, 7 restarts in 10 min,
+    # CrashLoopBackOff), ProgressDeadlineExceeded at 18:36:45Z, Argo health Degraded.
+    # No probe/limit tuning can fix this; the workload cannot serve anything.
+    # 191fae30 is the last revision with a successful sync (16:59:46Z); under it batch-active/
+    # manages no resources, so Argo (prune: true) removes the never-ready Deployment.
+    # Restore `main` once platform-config points webhook-relay at a real image.
+    targetRevision: 191fae301634292f9b654518b503c6f85cfd6b03
     path: batch-active
   destination:
     name: in-cluster
