@@ -9,7 +9,20 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 20:11Z (Custom Batch Error Log Flood, service.name:audit-exporter):
+    # platform-config main @ abb008e7e7959ac1bb4bfb9b0f3c1365869891f3 (auto-synced 20:04:21Z, syncId 00040)
+    # added batch-active/ Deployment audit-exporter (image webshop/audit-exporter:2026.09.09.1).
+    # The container has no env, args, ConfigMap, Service or network peers, yet logs
+    # "ERROR upstream gateway timeout after 30000ms (attempt N) code=504" ~10 lines/s (~600/min,
+    # attempt counter reached 4900 within 8 min, so the 30s timeout is never actually waited;
+    # pod network I/O is <1 KB total). The errors are fabricated by the stub; nothing user-facing
+    # depends on it (no Service, no traces, absent from the service map). Left running it would be
+    # the single largest log producer in the org (~860k lines / ~1 GB indexed per day).
+    # Same stub was introduced before (platform-config d5557a70, 2026-10-16, PR #31).
+    # 6307465e is the last revision with a successful, Healthy sync (19:37:30Z); under it
+    # batch-active/ manages no resources, so Argo (prune: true) removes the Deployment.
+    # Restore `main` once platform-config drops or fixes batch-active/audit-exporter.
+    targetRevision: 6307465ec6e31eafe5c00e479440e8f6b04edac1
     path: batch-active
   destination:
     name: in-cluster
