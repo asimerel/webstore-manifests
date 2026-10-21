@@ -9,7 +9,20 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-21 19:27Z (K8s Pod Startup Failure Monitor, batch/config-loader-d4b54fb6f-9h5lw):
+    # platform-config main @ e9a9e6df0960e9f1919bf555da3306c02600581e (auto-synced 19:20:01Z)
+    # added batch-active/ Deployment config-loader + ConfigMap config-loader-settings.
+    # The Deployment requires env ENDPOINT_URL via configMapKeyRef (optional: false) but the
+    # ConfigMap only defines LOG_LEVEL and REGION, so kubelet fails every container create with
+    # CreateContainerConfigError: "couldn't find key ENDPOINT_URL in ConfigMap
+    # batch/config-loader-settings". Same pod template (hash d4b54fb6f) failed identically on
+    # 2026-10-10 and 2026-10-15; this workload has never started. Argo health Degraded 19:30:02Z.
+    # 237534fd is the last revision with a successful, Healthy sync (18:49:13Z); under it
+    # batch-active/ manages no resources, so Argo (prune: true) removes the never-ready
+    # Deployment and its ConfigMap.
+    # Restore `main` once platform-config adds ENDPOINT_URL to config-loader-settings (or
+    # drops the key reference / marks it optional).
+    targetRevision: 237534fde0417b6e697dffe87ad4e69d4d978fdb
     path: batch-active
   destination:
     name: in-cluster
