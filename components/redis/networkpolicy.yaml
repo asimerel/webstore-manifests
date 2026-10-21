@@ -1,0 +1,34 @@
+# Restrict who can reach the cart's Redis.
+#
+# Incident 2026-10-21 (monitor "Custom Cart Storage Write Rejections"): a
+# cache-warmer Job in the `batch` namespace (deployed by the batch-jobs
+# Application from platform-config) connected to this instance, filled it with
+# ~240 MiB of `warm:*` keys (no TTL) and then ran `CONFIG SET maxmemory 128mb`.
+# With maxmemory-policy=noeviction every subsequent write - including every
+# cart AddItem - was rejected with "OOM command not allowed".
+#
+# This Redis is the cart service's store (see the noeviction rationale in
+# statefulset.yaml). Only the `shop` namespace may talk to it. The cluster
+# enforces NetworkPolicy (aws-eks-nodeagent --enable-network-policy=true).
+# Egress is intentionally left unrestricted.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: redis-allow-shop-only
+  labels:
+    app.kubernetes.io/component: redis
+    app.kubernetes.io/name: redis
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: redis
+  policyTypes:
+  - Ingress
+  ingress:
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          kubernetes.io/metadata.name: shop
+    ports:
+    - protocol: TCP
+      port: 6379
