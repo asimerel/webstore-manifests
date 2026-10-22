@@ -7,7 +7,27 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git # flag values are synced from the platform config repo
-    targetRevision: main
+    # INCIDENT 2026-10-22 08:12Z (K8s Pod Network Receive Anomaly, shop/ad + 20 other pods):
+    # pinned to the last known-good platform-config revision. 3216c096 (auto-synced
+    # 08:05:10Z, flagd hot-reloaded /etc/flagd/flags.json at 08:05:25Z) set
+    # browseJourneyConcurrency.defaultVariant to "50". The load-generator entrypoint
+    # polls that flag via OFREP every 10s and at 08:05:29Z logged "concurrency flag
+    # changed (5 -> 50), restarting k6", relaunching k6 with 50 looping VUs (10x the
+    # 5 VUs it had run for the previous 17h40m). Inbound traffic to every shop service
+    # stepped up in the 08:05 minute and stayed there: frontend 65 -> 637 KiB/s (x9.8),
+    # product-catalog 110 -> 1,076 (x9.8), load-generator 104 -> 864 (x8.3),
+    # recommendation 24 -> 164 (x7), ad 6.5 -> 31 KiB/s (x4.8; requests ~6 -> ~55/min),
+    # cart x3.3, kafka x2.5, checkout x2.1. The monitor fired for 20+ pods across shop,
+    # datastore (postgres-0), kube-system (coredns, kube-proxy, aws-node, eks agents)
+    # and edgedelta. No errors so far; this is pure load.
+    # 762a2627 was on main from 07:35:48Z (batch-jobs synced it) until 08:05:10Z with no
+    # flagd-values diff, so its flagd-values/ content is exactly what was live before
+    # the incident (browseJourneyConcurrency "5", all other flags off). Argo will
+    # restore the ConfigMap, flagd hot-reloads, and the runner resizes back to 5 VUs on
+    # its next 10s poll - no pod restart needed. Restore to `main` once platform-config
+    # sets browseJourneyConcurrency back to "5" (or the 50-session load test is
+    # confirmed intentional and scheduled with the service owners).
+    targetRevision: 762a2627ef4e0121c187fcf12dee370bd9372140
     path: flagd-values
   destination:
     name: in-cluster
