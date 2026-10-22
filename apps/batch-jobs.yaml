@@ -9,7 +9,37 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 04:25:58Z ("Custom Postgres Backend Memory Climb",
+    # k8s.namespace.name:datastore, k8s.pod.name:postgres-0): pinned to the
+    # last known-good platform-config revision.
+    # 3f7384da (auto-synced 04:15:58Z, syncId 00083-BbcAj; Argo dry-run task
+    # list was exactly batch/Job:batch/catalog-maintenance nil->obj) added a
+    # Job that connects to shop_db as the db-maintenance user, logs "acquiring
+    # exclusive lock on catalog.products (migration step 1 of 3)" and then
+    # holds that lock for HOLD_SECONDS=86400 (24 h) without progressing.
+    # catalog.products is the table product-catalog serves every GetProduct /
+    # ListProducts from, so every shop read of the catalog blocks behind the
+    # lock: load-generator reports "request timeout" on /api/products/*,
+    # /api/recommendations and /api/checkout from 04:17:05Z (zero such
+    # failures 00:55Z-04:15Z). Each blocked query is a Postgres backend
+    # process, so postgres-0 working set went 41 MiB (flat 02:55Z-04:15Z) ->
+    # 47 -> 54 -> 61 -> 73 -> 80 -> 89 -> 96 -> 103 -> 108 -> 115 -> 122 MiB
+    # at ~7 MiB/min, heading for max_connections exhaustion. The Job pod
+    # itself is idle (1.6 MiB RSS, 25m CPU request) - the memory is on the
+    # server side. The table is never modified (the job never reaches step
+    # 2), so no data is at risk from pruning it.
+    # 8e2a024b was auto-synced 03:47:33Z (syncId 00081-uQDMn pruned the three
+    # index-store objects from PR #47) and was live until 04:15:58Z with
+    # batch-active rendering to nothing: app Synced/Healthy, zero tracked
+    # objects. Job catalog-maintenance is currently the only object tracked
+    # by this Application, so with prune: true + allowEmpty, syncing this
+    # revision prunes exactly it (terminating the lock holder) and changes
+    # nothing else.
+    # Restore `targetRevision: main` once platform-config/batch-active ships
+    # a catalog-maintenance Job with a HOLD_SECONDS measured in seconds (not a
+    # day), a lock_timeout/statement_timeout on its session, and a maintenance
+    # window agreed with the shop team.
+    targetRevision: 8e2a024babba691875bb693897772f9ef2c79740
     path: batch-active
   destination:
     name: in-cluster
