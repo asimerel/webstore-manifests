@@ -9,7 +9,36 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 01:47:48Z ("K8s Pod Placement Monitor",
+    # k8s.namespace.name:batch, k8s.deployment.name:archive-writer,
+    # event.type:FailedScheduling): pinned to the last known-good
+    # platform-config revision.
+    # 5f07832a (auto-synced 01:39:19Z, syncId 00073; Argo task list was exactly
+    # "/PersistentVolumeClaim:batch/archive-writer nil->obj,
+    # apps/Deployment:batch/archive-writer nil->obj", nothing else) shipped
+    # Deployment batch/archive-writer plus PersistentVolumeClaim
+    # batch/archive-writer with storageClassName: gp3-archive. That
+    # StorageClass does not exist in the cluster: persistentvolume-controller
+    # emits ProvisioningFailed 'storageclass.storage.k8s.io "gp3-archive" not
+    # found' every 15s since 01:39:19Z (the only bound PVCs in the cluster,
+    # datastore/data-postgres-0 and data-redis-0, use class "gp3"). The PVC is
+    # stuck Pending/unbound, so the scheduler rejects the pod ('0/3 nodes are
+    # available: pod has unbound immediate PersistentVolumeClaims') and
+    # cluster-autoscaler refuses to scale ('1 pod has unbound immediate
+    # PersistentVolumeClaims'). Deployment 0/1 available since creation.
+    # Same failure as the 2026-10-16 05:39Z incident (PR #25).
+    # a8c890eb was auto-synced 01:10:21Z (syncId 00071/00072; its task list only
+    # pruned NetworkPolicy shop/restrict-cart-ingress, then rendered "[]") and
+    # was live until 01:39:19Z with batch-active rendering to nothing: app
+    # Synced/Healthy, zero tracked objects for those 29 min. The two
+    # archive-writer resources are currently the only objects in the cluster
+    # tracked by this Application, so with prune: true + allowEmpty, syncing
+    # this revision prunes exactly them (no PV was ever provisioned, so no
+    # data is lost) and changes nothing else.
+    # Restore `targetRevision: main` once platform-config/batch-active
+    # references an existing StorageClass (e.g. gp3) or the storage owners
+    # have created a gp3-archive StorageClass.
+    targetRevision: a8c890eb794a19fd29326a20dc5cf314eee61cfa
     path: batch-active
   destination:
     name: in-cluster
