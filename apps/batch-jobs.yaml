@@ -9,7 +9,32 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 00:13Z (K8s Pod Crash Monitor, batch/media-transcoder
+    # CrashLoopBackOff): pinned to the last known-good platform-config revision.
+    # ed0dbdb8 (auto-synced 00:05:53Z, syncId 00065; Argo task list was exactly
+    # "apps/Deployment:batch/media-transcoder nil->obj", nothing else) shipped
+    # Deployment batch/media-transcoder (image webshop/media-transcoder:2026.09.15.1,
+    # env SCRATCH_MIB=128, limits.memory 128Mi, NO volumes). The container tries
+    # to stage 128MiB of scratch into /dev/shm, but with no emptyDir mounted
+    # there /dev/shm is the container-runtime default 64MiB tmpfs. Every start
+    # logs "scratch write failed: shm 64.0M 64.0M 0 100% /dev/shm" and exits 1
+    # within the same second: 7 starts / 6 restarts in 8 min, back-off at 5m,
+    # Deployment Available=False, 0/1 ready. Nothing references it (no Service,
+    # no other workload, no other consumer of the image) and there is no
+    # in-cluster knob; the fix belongs in platform-config (mount an emptyDir
+    # medium: Memory with sizeLimit >= SCRATCH_MIB at /dev/shm and raise the
+    # container memory limit accordingly since tmpfs pages are charged to the
+    # cgroup, or lower SCRATCH_MIB below 64).
+    # b8e73b59 was auto-synced 23:37:47Z (syncId 00060; its task list only
+    # pruned Deployment batch/session-indexer) and was live until 00:05:53Z with
+    # batch-active rendering to nothing: app Synced/Healthy, batch namespace had
+    # zero workloads for those 28 min. Deployment batch/media-transcoder is
+    # currently the only object in the cluster tracked by this Application, so
+    # with prune: true + allowEmpty, syncing this revision prunes media-transcoder
+    # and changes nothing else.
+    # Restore `targetRevision: main` once media-transcoder is fixed or removed in
+    # platform-config.
+    targetRevision: b8e73b59ae8d61165cef34233b367ac75bb6c4fa
     path: batch-active
   destination:
     name: in-cluster
