@@ -9,7 +9,37 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 03:34:47Z ("K8s Pod Placement Monitor",
+    # k8s.namespace.name:batch, k8s.deployment.name:index-store,
+    # event.type:FailedScheduling): pinned to the last known-good
+    # platform-config revision.
+    # febf8c95 (auto-synced 03:26:45Z, syncId 00080-QnjLu; Argo dry-run task
+    # list was exactly PersistentVolume index-store nil->obj,
+    # PersistentVolumeClaim batch/index-store nil->obj, Deployment
+    # batch/index-store nil->obj) added a static PV with a node affinity that
+    # no node in the cluster satisfies. default-scheduler: '0/3 nodes are
+    # available: 3 node(s) didn't match PersistentVolume's node affinity ...
+    # preemption: 0/3 nodes are available: 3 Preemption is not helpful'.
+    # cluster-autoscaler: 'pod didn't trigger scale-up: 1 node(s) didn't match
+    # PersistentVolume's node affinity' -- its node-group template node also
+    # fails VolumeBinding, so the affinity names a specific hostname that is
+    # not (or no longer) in the cluster rather than a zone. Live nodes are
+    # ip-10-42-14-133 / ip-10-42-29-103 / ip-10-42-42-131 (us-west-2).
+    # PVC batch/index-store (storageClassName: local-archive) is Bound to PV
+    # index-store; pod index-store-577b7fff99-vcft8 has been Pending since
+    # creation and the Deployment is 0/1 available. Same failure mode as the
+    # 2026-10-16 incident (PR #27).
+    # 9b5376b7 was auto-synced 02:56:08Z (syncId 00078 pruned Job
+    # credential-rotator, 00079 rendered "[]") and was live until 03:26:45Z
+    # with batch-active rendering to nothing: app Synced/Healthy, zero tracked
+    # objects. The three index-store objects are currently the only objects
+    # tracked by this Application, so with prune: true + allowEmpty, syncing
+    # this revision prunes exactly them and changes nothing else. The PV was
+    # never attached or mounted (nothing could schedule), so no data is lost.
+    # Restore `targetRevision: main` once platform-config/batch-active ships
+    # a PV whose nodeAffinity names a live node (or uses a dynamic
+    # StorageClass with WaitForFirstConsumer binding instead of a static pin).
+    targetRevision: 9b5376b79bc42ca669d416772b9856e32aea3456
     path: batch-active
   destination:
     name: in-cluster
