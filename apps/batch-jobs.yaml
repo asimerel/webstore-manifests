@@ -9,7 +9,40 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 02:40:59Z ("Default Service Anomaly Monitor",
+    # service.name:recommendation): pinned to the last known-good
+    # platform-config revision.
+    # cc789cb3 (auto-synced 02:24:47Z, syncId 00076; Argo task list was exactly
+    # "batch/Job:batch/credential-rotator nil->obj", nothing else) shipped a
+    # one-shot Job batch/credential-rotator (ROTATE_ROLE=shop_user, auth via
+    # Secret db-maintenance) that ran ALTER ROLE on the shared Postgres role
+    # shop_user at 02:24:5xZ and terminated its 2 open sessions ("password
+    # rotated for shop_user; consumers must reconnect"). The only consumer,
+    # shop/product-catalog, carries the static connection string
+    # postgres://shop_user:shop_password@postgres.datastore... from
+    # components/product-catalog/deployment.yaml (same value that
+    # components/postgres/init-configmap.yaml seeds), so every DB call since
+    # has failed with `pq: password authentication failed for user "shop_user"
+    # (28P01)` (postgres-0 FATAL 28P01 ~30/min from 02:24Z, still ongoing).
+    # Downstream: recommendation ListRecommendations ~100% INTERNAL,
+    # frontend "Product Not Found" (~50/min) and checkout "failed to prepare
+    # order: failed to get product". The Job has automountServiceAccountToken:
+    # false, so it never published the new password to any Secret; nothing in
+    # the cluster can know it.
+    # de347668 was auto-synced 01:55:35Z (syncId 00074/00075; pruned
+    # archive-writer, then rendered "[]") and was live until 02:24:47Z with
+    # batch-active rendering to nothing: app Synced/Healthy, zero tracked
+    # objects. The Completed Job (+ its pod) is currently the only object
+    # tracked by this Application, so with prune: true + allowEmpty, syncing
+    # this revision prunes exactly it and changes nothing else. This stops the
+    # rotator from being re-applied; it does NOT restore the role password --
+    # that needs ALTER ROLE shop_user PASSWORD 'shop_password' on
+    # datastore/postgres-0 (or rolling the new credential into product-catalog)
+    # by the DB owners.
+    # Restore `targetRevision: main` once platform-config/batch-active no
+    # longer rotates shop_user without also delivering the credential to
+    # product-catalog.
+    targetRevision: de347668300b722d519a63b468815cee52e782fb
     path: batch-active
   destination:
     name: in-cluster
