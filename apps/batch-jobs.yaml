@@ -9,7 +9,23 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 07:06Z (Custom Batch Error Log Flood, service.name:audit-exporter):
+    # platform-config main @ 8887fa38737e91e7a01d6ce38810e6d1c276c608 (auto-synced 06:59:09Z,
+    # syncId 00096) added two Deployments under batch-active/:
+    #   - audit-exporter (webshop/audit-exporter:2026.09.09.1): no env, args, ConfigMap, Service
+    #     or network peers, yet logs "ERROR upstream gateway timeout after 30000ms (attempt N)
+    #     code=504" at ~10 lines/s (~596/min; attempt counter hit 6185 in 10m25s, so the 30 s
+    #     timeout is never actually waited; pod tx/rx totals ~6 KB / ~4 KB since start). The
+    #     errors are fabricated by the stub. Nothing user-facing depends on it. Left running it
+    #     would be the org's top log producer (~860k lines / ~1 GB indexed per day).
+    #     Same stub recurred 2026-10-16 and 2026-10-21 20:04Z (see PR #38).
+    #   - asset-syncer (webshop/asset-syncer:2026.09.09.1-hotfix1): tag does not exist in ECR,
+    #     ImagePullBackOff, never started.
+    # 4601ee17 is the last revision with a successful, Healthy sync (06:30:15Z, syncId 00095);
+    # under it batch-active/ manages no resources in batch/, so Argo (prune: true) removes both
+    # Deployments. Restore `main` once platform-config drops or fixes batch-active/audit-exporter
+    # and the asset-syncer image tag.
+    targetRevision: 4601ee17a5cea31487688ff7a92599d66ff482b1
     path: batch-active
   destination:
     name: in-cluster
