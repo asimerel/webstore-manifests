@@ -9,7 +9,31 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 01:01Z (Custom Shop Upstream Connect Timeouts,
+    # service frontend / namespace shop): pinned to the last known-good
+    # platform-config revision.
+    # 4c3dd8f8 (auto-synced 00:51:43Z, syncId 00069; Argo task list was exactly
+    # "networking.k8s.io/NetworkPolicy:shop/restrict-cart-ingress nil->obj",
+    # nothing else) shipped a NetworkPolicy into the *shop* namespace selecting
+    # app.kubernetes.io/name=cart with policyTypes [Ingress] and NO ingress
+    # rules, i.e. deny-all inbound to the cart pod. From 00:51:43Z the cart pod
+    # (1/1 Ready, 0 restarts) logs zero requests (714 lines in the 12 min
+    # before, 0 after) and frontend logs "connect ETIMEDOUT 172.20.205.139:8080"
+    # (Service shop/cart ClusterIP) for its own cart RPCs plus "cart failure:
+    # failed to get user cart during checkout ... dial tcp 172.20.205.139:8080:
+    # i/o timeout" from checkout. Cart page, add-to-cart and checkout are down
+    # for every customer; no other shop dependency is affected.
+    # e4bd1b5a was auto-synced 00:22:12Z (syncId 00067/00068; its task list only
+    # pruned Deployment batch/media-transcoder) and was live until 00:51:43Z with
+    # batch-active rendering to nothing: app Synced/Healthy, zero tracked objects
+    # for those 29 min. NetworkPolicy shop/restrict-cart-ingress is currently the
+    # only object in the cluster tracked by this Application, so with prune: true
+    # + allowEmpty, syncing this revision prunes the policy and changes nothing
+    # else.
+    # Restore `targetRevision: main` once restrict-cart-ingress is removed from
+    # platform-config/batch-active (or rewritten with explicit ingress rules for
+    # frontend and checkout and moved out of the batch-jobs app).
+    targetRevision: e4bd1b5a62e586fc2c05d0c9a118d0cde7e41f1d
     path: batch-active
   destination:
     name: in-cluster
