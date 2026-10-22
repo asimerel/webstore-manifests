@@ -9,7 +9,16 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 06:11Z: pinned to the last known-good platform-config
+    # revision. The auto-sync to 93394e8ee1eae95739c6088ac8576308f012d93c
+    # (06:09:20Z) created a ValidatingWebhookConfiguration
+    # "pod-policy.platform-ops.svc" whose backing Service
+    # pod-policy-webhook.platform-ops does not exist (nor does the namespace),
+    # so every pod CREATE in shop/ is rejected ("service not found") and
+    # shop/recommendation is stuck at 0/1 (FailedCreate). Pinning here makes
+    # Argo prune the webhook. Restore "main" once the webhook (or its backend)
+    # is fixed upstream in platform-config.
+    targetRevision: 4b83932baac2750b7b879cc165ef303517e42b2a
     path: batch-active
   destination:
     name: in-cluster
