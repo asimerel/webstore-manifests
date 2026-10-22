@@ -9,7 +9,44 @@ spec:
   project: default
   source:
     repoURL: git@github.com:asimerel/platform-config.git
-    targetRevision: main
+    # INCIDENT 2026-10-22 05:14:58Z ("K8s Pod Crash Monitor",
+    # k8s.namespace.name:batch, k8s.deployment.name:report-generator,
+    # k8s.pod.name:report-generator-5f764bd8fc-r66bd, event.type:BackOff):
+    # pinned to the last known-good platform-config revision.
+    # b22ac95e (auto-synced 05:05:10Z, syncId 00087-hfAgi; task list was
+    # exactly Deployment report-generator, Deployment cache-warmer and Job
+    # cache-warmer-fill, all nil->obj) re-added three objects:
+    #  - report-generator: image report-generator:2026.09.09.1 (the only tag
+    #    in the registry). Its entrypoint /usr/local/bin/report-generator is
+    #    a 91-byte shell script: echo 'starting worker'; sleep 30;
+    #    echo 'fatal: connection refused, exiting'; exit 1. It opens no
+    #    connection, reads no config (the Deployment sets no env), and cannot
+    #    succeed. Same behaviour from pod -wn2nv 15:05-15:19Z on 10-21 (rev
+    #    55407e09, pruned by 2d868388). 7 restarts / exit 1 every ~30 s since
+    #    05:05:14Z; 21 BackOff events in 24 h, all from this image.
+    #  - cache-warmer-fill (CACHE_MAXMEMORY=128mb, FILL_TARGET_BYTES=240MiB)
+    #    ran CONFIG SET maxmemory 134217728 against datastore/redis-0 at
+    #    05:05:39Z while redis used 252 MB (redis manifest says 256mb,
+    #    noeviction). Redis now rejects every write: shop/cart logs
+    #    "OOM command not allowed when used memory > 'maxmemory'" on
+    #    AddItemAsync, FailedPrecondition to frontend (~100 errors / 10 min,
+    #    ongoing). Identical episode 21:38-21:59Z on 10-21 (rev c5ab7e07) ended
+    #    within two minutes of a831baea pruning the same two objects.
+    #  - cache-warmer (refresh loop) keeps hammering redis with writes that are
+    #    all rejected.
+    # c36981da was auto-synced 04:36:48Z (pruned catalog-maintenance from PR
+    # #48) and was live until 05:05:10Z with batch-active rendering to
+    # nothing: app Synced/Healthy, zero tracked objects. The three objects
+    # above are the only ones this Application tracks right now, so with
+    # prune: true + allowEmpty, syncing this revision prunes exactly them and
+    # changes nothing else. No Service, ingress, PVC or consumer depends on
+    # report-generator or cache-warmer.
+    # After sync, verify on datastore/redis-0 that CONFIG GET maxmemory is
+    # back to 268435456 and, if not, have the datastore owner restore it.
+    # Restore `targetRevision: main` once platform-config/batch-active ships a
+    # report-generator image with a real worker binary plus the env it needs,
+    # and a cache-warmer that does not CONFIG SET maxmemory on a shared redis.
+    targetRevision: c36981da7cd0425676190660c570be8a999857e6
     path: batch-active
   destination:
     name: in-cluster
